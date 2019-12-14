@@ -20,7 +20,7 @@ class Byte(IntEnum):
 
 
 class Length(IntEnum):
-    Command = 19                # lenght of command message
+    Command = 19                # length of command message
     Response = 10               # length of response message
 
 
