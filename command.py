@@ -15,8 +15,8 @@ class Byte(IntEnum):
     Tail = 0xAB,                # end of the single message
     CommandID = 0xB4,           # command id
     CommandEnd = 0xFF           # end of the command
-    ReplyC0 = 0xC0              # response byte
-    ReplyC5 = 0xC5              # response byte
+    InitiativeResponse = 0xC0   # automatic response
+    PassivResponse = 0xC5       # response to specific request
 
 
 class Length(IntEnum):
