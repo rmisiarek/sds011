@@ -1,5 +1,6 @@
 import logging
 import struct
+from time import sleep
 
 import serial
 
@@ -19,6 +20,7 @@ class SDS011:
         self._unit = "µg/m³"
         self._firmware = None
         self._device_id = None
+        self._work_mode = None
 
         try:
             self.device = serial.Serial(
@@ -34,7 +36,13 @@ class SDS011:
             raise
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
-            self._load_config()
+            # self._load_config()
+            # sleep(5)
+            # self._set_measuring_state()
+            # sleep(5)
+            # self._set_sleeping_state()
+            # sleep(5)
+            # self._set_measuring_state()
 
     def _load_config(self):
         logging.info(f"SDS011: loading config data...")
@@ -46,17 +54,33 @@ class SDS011:
     def firmware(self):
         return self._firmware
 
+    @property
+    def work_mode(self):
+        return self._work_mode
+
+    @work_mode.setter
+    def work_mode(self, value):
+        if isinstance(value, WorkMode):
+            response = self._send_request(
+                command=Command.WorkMode,
+                data=self._prepare_data(CommandMode.Set, value))
+            if response and response[BytePosition.Data1] == value:
+                self._work_mode = value
+        else:
+            raise TypeError(f"WorkMode have to be type of {WorkMode.Measuring=} or {WorkMode.Sleeping=}")
+
     def print_config(self):
-        print(f"=" * 35)
-        print(f"\tFirmware: {self.firmware}")
-        print(f"=" * 35)
+        print(f"=" * 40)
+        print(f"\tFirmware:\t{self.firmware}")
+        print(f"\tDevice ID:\t{self._device_id}")
+        print(f"=" * 40)
 
     def _get_firmware_version(self):
         response = self._send_request(
             command=Command.Firmware,
             data=self._prepare_data(CommandMode.Get, 0)
         )
-        if response and response[2] == Command.Firmware:
+        if response and response[BytePosition.Data1] == Command.Firmware:
             self._firmware = "{0:02d}{1:02d}{2:02d}".format(response[3], response[4], response[5])
 
     def _get_device_id(self):
@@ -64,8 +88,25 @@ class SDS011:
             command=Command.DeviceId,
             data=self._prepare_data(CommandMode.Get, 0)
         )
+        if response and response[BytePosition.Data1] == Command.DeviceId:
+            self._device_id = "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
 
-    def _prepare_checksum(self, message: bytearray) -> int:
+    def _set_measuring_state(self):
+        response = self._send_request(
+            command=Command.WorkMode,
+            data=self._prepare_data(CommandMode.Set, WorkMode.Measuring))
+        if response and response[BytePosition.Data1] == Command.WorkMode:
+            self._work_mode = WorkMode.Measuring
+
+    def _set_sleeping_state(self):
+        response = self._send_request(
+            command=Command.WorkMode,
+            data=self._prepare_data(CommandMode.Set, WorkMode.Sleeping))
+        if response and response[BytePosition.Data1] == Command.WorkMode:
+            self._work_mode = WorkMode.Sleeping
+
+    @staticmethod
+    def _prepare_checksum(message: bytearray) -> int:
         checksum = 0
         for i in range(2, len(message)):
             checksum = checksum + message[i]
@@ -89,7 +130,8 @@ class SDS011:
         message.append(Byte.Tail.value)
         return message
 
-    def _prepare_data(self, command_mode: CommandMode, command_value) -> bytearray:
+    @staticmethod
+    def _prepare_data(command_mode: CommandMode, command_value: int) -> bytearray:
         data = bytearray()
         data.append(command_mode)
         data.append(command_value)
@@ -142,8 +184,12 @@ class SDS011:
 
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
-    # sensor._get_firmware_version()
     sensor.print_config()
+    sleep(5)
+    sensor.work_mode = WorkMode.Sleeping
+    sleep(5)
+    sensor.work_mode = WorkMode.Measuring
+    sleep(5)
 
         # example message
         # aa: b4:02: 01:00: 00:00: 00:00: 00:00: 00:00: 00:00: ff:ff: 01:ab
