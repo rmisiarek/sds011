@@ -24,12 +24,12 @@ class BytePosition(IntEnum):
 
 
 class Command(IntEnum):
-    DataReportMode = 2,         # set data reporting mode
+    CommunicationMode = 2,      # set data reporting mode
     Query = 4,                  # query data command
     DeviceId = 5,               # device id
     WorkMode = 6,               # set sleep mode or work mode
-    Firmware = 7,               # set working period
-    DutyCycle = 8               # check firmware version
+    Firmware = 7,               # check firmware version
+    DutyCycle = 8               # set working period
 
 
 class Byte(IntEnum):
@@ -54,3 +54,8 @@ class CommandMode(IntEnum):
 class WorkMode(IntEnum):
     Sleeping = 0,
     Measuring = 1
+
+
+class CommunicationMode(IntEnum):
+    Active = 0,
+    Passive = 1,

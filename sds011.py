@@ -21,6 +21,7 @@ class SDS011:
         self._firmware = None
         self._device_id = None
         self._work_mode = None
+        self._communication_mode = None
 
         try:
             self.device = serial.Serial(
@@ -36,16 +37,11 @@ class SDS011:
             raise
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
-            # self._load_config()
-            # sleep(5)
-            # self._set_measuring_state()
-            # sleep(5)
-            # self._set_sleeping_state()
-            # sleep(5)
-            # self._set_measuring_state()
+            self._load_config()
 
     def _load_config(self):
         logging.info(f"SDS011: loading config data...")
+        self._wake_sensor_up()
         self._get_firmware_version()
         self._get_device_id()
         logging.info(f"SDS011: loading config data - OK")
@@ -58,22 +54,53 @@ class SDS011:
     def work_mode(self):
         return self._work_mode
 
+    @property
+    def communication_mode(self):
+        return self._communication_mode
+
     @work_mode.setter
     def work_mode(self, value):
-        if isinstance(value, WorkMode):
-            response = self._send_request(
-                command=Command.WorkMode,
-                data=self._prepare_data(CommandMode.Set, value))
-            if response and response[BytePosition.Data1] == value:
-                self._work_mode = value
-        else:
+        print("in work_mode")
+        if not isinstance(value, WorkMode):
             raise TypeError(f"WorkMode have to be type of {WorkMode.Measuring=} or {WorkMode.Sleeping=}")
+        response = self._send_request(
+            command=Command.WorkMode,
+            data=self._prepare_data(CommandMode.Set, value))
+        if response and response[BytePosition.Data1] == value:
+            self._work_mode = value
+            logging.debug(f"WorkMode set: {CommunicationMode=}")
+
+    @communication_mode.setter
+    def communication_mode(self, value):
+        if not isinstance(value, CommunicationMode):
+            raise TypeError(f"CommunicationMode have to be type of {CommunicationMode.Active=} or {CommunicationMode.Passive=}")
+        response = self._send_request(
+            command=Command.CommunicationMode,
+            data=self._prepare_data(CommandMode.Set, value)
+        )
+        if response and response[BytePosition.Data1] == Command.CommunicationMode:
+            self._communication_mode = value
+            logging.debug(f"CommunicationMode set: {Command.CommunicationMode}, response = {response}")
 
     def print_config(self):
         print(f"=" * 40)
         print(f"\tFirmware:\t{self.firmware}")
         print(f"\tDevice ID:\t{self._device_id}")
         print(f"=" * 40)
+
+    def _wake_sensor_up(self):
+
+        response = self._send_request(
+            command=Command.WorkMode,
+            data=self._prepare_data(CommandMode.Set, WorkMode.Measuring)
+        )
+        logging.debug(f"_wake_sensor_up: WorkMode - {response}")
+
+        self._send_request(
+            command=Command.DutyCycle,
+            data=self._prepare_data(CommandMode.Set, 0)
+        )
+        logging.debug(f"_wake_sensor_up: DutyCycle - {response}")
 
     def _get_firmware_version(self):
         response = self._send_request(
@@ -91,19 +118,22 @@ class SDS011:
         if response and response[BytePosition.Data1] == Command.DeviceId:
             self._device_id = "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
 
-    def _set_measuring_state(self):
+    def _get_work_mode(self):
         response = self._send_request(
             command=Command.WorkMode,
-            data=self._prepare_data(CommandMode.Set, WorkMode.Measuring))
+            data=self._prepare_data(CommandMode.Get, 0)
+        )
         if response and response[BytePosition.Data1] == Command.WorkMode:
-            self._work_mode = WorkMode.Measuring
+            self._device_id = "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
 
-    def _set_sleeping_state(self):
+    def _get_communication_mode(self):
         response = self._send_request(
-            command=Command.WorkMode,
-            data=self._prepare_data(CommandMode.Set, WorkMode.Sleeping))
-        if response and response[BytePosition.Data1] == Command.WorkMode:
-            self._work_mode = WorkMode.Sleeping
+            command=Command.CommunicationMode,
+            data=self._prepare_data(CommandMode.Get, 0)
+        )
+        if response and response[BytePosition.Data1] == Command.CommunicationMode:
+            logging.info(f"_get_communication_mode: {response}")
+            self._communication_mode = response[BytePosition.Data3]
 
     @staticmethod
     def _prepare_checksum(message: bytearray) -> int:
@@ -144,7 +174,7 @@ class SDS011:
 
     def _send_request(self, command: Command, data: bytearray) -> tuple:
         message_bytes = self._prepare_command(command, data)
-        logging.info(f"SDS011: sending message {message_bytes}")
+        # logging.debug(f"SDS011: sending message {message_bytes}")
         written_bytes = self.device.write(message_bytes)
         self._validate_written_data(written_bytes=written_bytes, _len=len(message_bytes))
         response = self._process_response()
@@ -170,7 +200,8 @@ class SDS011:
             if not valid_passiv_response(_bytes=received_bytes[0:2]):
                 break
             else:
-                logging.debug(f"[ PassivResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)=}")
+                pass
+                # logging.debug(f"[ PassivResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)=}")
                 # logging.info(f"SDS011: got response [ P ]: {received_bytes}")
 
             if not valid_initiative_response(_bytes=received_bytes[0:2]):
@@ -182,14 +213,35 @@ class SDS011:
         return struct.unpack('BBBBBBBBBB', received_bytes)
 
 
+def test_communication_mode(s):
+    s.communication_mode = CommunicationMode.Active
+    assert s.communication_mode == CommunicationMode.Active
+    s.communication_mode = CommunicationMode.Passive
+    assert s.communication_mode == CommunicationMode.Passive
+
+
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
-    sensor.print_config()
-    sleep(5)
-    sensor.work_mode = WorkMode.Sleeping
-    sleep(5)
-    sensor.work_mode = WorkMode.Measuring
-    sleep(5)
+    # sensor._get_communication_mode()
+    # sleep(5)
+    sensor.communication_mode = CommunicationMode.Active
+    sensor._get_communication_mode()
+    print(f"CommunicationMode: {sensor.communication_mode}")
+    # sleep(5)
+    # sensor.communication_mode = CommunicationMode.Active
+    # sensor._get_communication_mode()
+    test_communication_mode(sensor)
+    # sensor.print_config()
+    # sleep(5)
+    # sensor.work_mode = WorkMode.Sleeping
+    # sleep(5)
+    # sensor.work_mode = WorkMode.Measuring
+    # sleep(5)
+    # sensor.communication_mode = CommunicationMode.Active
+    # sleep(5)
+    # sensor.communication_mode = CommunicationMode.Passive
+    # sleep(5)
 
-        # example message
-        # aa: b4:02: 01:00: 00:00: 00:00: 00:00: 00:00: 00:00: ff:ff: 01:ab
+
+
+
