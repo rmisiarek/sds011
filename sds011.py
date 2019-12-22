@@ -1,10 +1,12 @@
 import logging
 import struct
 from time import sleep
-
 import serial
 
+
 from command import *
+from packet import *
+
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s\t%(message)s",
@@ -14,9 +16,80 @@ logging.basicConfig(
 logging.getLogger(__name__)
 
 
+class Sender:
+
+    response = None
+
+    def __init__(self, device):
+        self.device = device
+
+    def communicate(self, packet):
+        if not isinstance(packet.data1, Command):
+            raise TypeError(f"CommandMode have to be type of {Command}")
+
+        if not isinstance(packet.data2, CommandMode):
+            raise TypeError(f"CommandValue have to be type of {CommandMode}")
+
+        response = self._send(message=packet.message)
+
+        if response and response[BytePosition.Data1] == packet.data1:
+            self.response = response
+            logging.debug(f"{packet.command_id=}, {packet.data1=}, {packet.data2=}, response = {response}")
+            return self.response
+
+    def _send(self, message: bytearray):
+        print(f"sending: {message}")
+        sent = self.device.write(message)
+        self.device.flush()
+        if sent != Length.Command.value:
+            raise IOError(f"SDS011: sent {sent} bytes, expected {Length.Command.value} bytes")
+        response = self._response()
+        return response
+
+    def _response(self):
+        def valid_passiv_response(_bytes: bytes) -> bool:
+            return (_bytes[0] == Byte.Head) and (_bytes[1] == Byte.PassivResponse)
+
+        def valid_initiative_response(_bytes: bytes) -> bool:
+            return (_bytes[0] == Byte.Head) and (_bytes[1] == Byte.InitiativeResponse)
+
+        while True:
+            received_bytes = self.device.read(Length.Response)
+            if len(received_bytes) != Length.Response.value:
+                raise IOError(f"SDS011: received {len(received_bytes)} bytes, expected {Length.Response.value} bytes")
+
+            # checksum = self._prepare_checksum(received_bytes[0:-2])
+            # if checksum != received_bytes[-2]:
+            #     raise IOError(f"SDS011: {checksum=} is invalid")
+
+            if not valid_passiv_response(_bytes=received_bytes[0:2]):
+                break
+            else:
+                pass
+                # logging.debug(f"[ PassivResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)=}")
+                # logging.info(f"SDS011: got response [ P ]: {received_bytes}")
+
+            if not valid_initiative_response(_bytes=received_bytes[0:2]):
+                break
+            else:
+                logging.debug(f"[ InitiativeResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)}")
+                # logging.info(f"SDS011: got response [ I ]: {received_bytes}")
+
+        return struct.unpack('BBBBBBBBBB', received_bytes)
+
+    @staticmethod
+    def _prepare_checksum(message: bytearray) -> int:
+        checksum = 0
+        for i in range(2, len(message)):
+            checksum = checksum + message[i]
+
+        return checksum % 256
+
+
 class SDS011:
 
     def __init__(self, device_port):
+        self.sender = None
         self._unit = "µg/m³"
         self._firmware = None
         self._device_id = None
@@ -37,7 +110,13 @@ class SDS011:
             raise
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
-            self._load_config()
+            self.sender = Sender(self.device)
+            # self._load_config()
+
+    def fm(self):
+        f = firmware_version()
+        print(f)
+        self.sender.communicate(f)
 
     def _load_config(self):
         logging.info(f"SDS011: loading config data...")
@@ -165,7 +244,7 @@ class SDS011:
         data = bytearray()
         data.append(command_mode)
         data.append(command_value)
-        return data
+        return bytearray([command_mode, command_value])
 
     def _validate_written_data(self, written_bytes, _len: int) -> (bool, int):
         self.device.flush()
@@ -222,15 +301,17 @@ def test_communication_mode(s):
 
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
+    sensor.fm()
+
     # sensor._get_communication_mode()
-    # sleep(5)
-    sensor.communication_mode = CommunicationMode.Active
-    sensor._get_communication_mode()
-    print(f"CommunicationMode: {sensor.communication_mode}")
     # sleep(5)
     # sensor.communication_mode = CommunicationMode.Active
     # sensor._get_communication_mode()
-    test_communication_mode(sensor)
+    # print(f"CommunicationMode: {sensor.communication_mode}")
+    # sleep(5)
+    # sensor.communication_mode = CommunicationMode.Active
+    # sensor._get_communication_mode()
+    # test_communication_mode(sensor)
     # sensor.print_config()
     # sleep(5)
     # sensor.work_mode = WorkMode.Sleeping

@@ -51,6 +51,13 @@ class CommandMode(IntEnum):
     Set = 1                     # setter (e.g. sleeping mode)
 
 
+class CommandValue(IntEnum):
+    Sleeping = 0,               # WorkMode
+    Measuring = 1               # WorkMode
+    Active = 0,                 # CommunicationMode
+    Passive = 1,                # CommunicationMode
+
+
 class WorkMode(IntEnum):
     Sleeping = 0,
     Measuring = 1
