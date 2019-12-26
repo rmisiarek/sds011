@@ -1,9 +1,13 @@
 import logging
 import struct
+from time import sleep
+from typing import Optional, Union
 
 import serial
 
 from packet import *
+from tests import *
+
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s\t%(message)s",
@@ -15,75 +19,66 @@ logging.getLogger(__name__)
 
 class Sender:
 
-    response = None
-
     def __init__(self, device):
         self.device = device
 
-    def communicate(self, packet):
+    def communicate(self, packet: Packet) -> Optional[tuple]:
         if not isinstance(packet.data1, Command):
             raise TypeError(f"CommandMode have to be type of {Command}")
 
         if not isinstance(packet.data2, CommandMode):
             raise TypeError(f"CommandValue have to be type of {CommandMode}")
 
-        response = self._send(message=packet.message)
+        response = self.write(message=packet.message)
 
-        if response and response[BytePosition.Data1] == packet.data1:
-            self.response = response
-            logging.debug(f"{packet.command_id=}, {packet.data1=}, {packet.data2=}, response = {response}")
-            return self.response
+        if response and response[BytePosition.Data1] == packet.data1 and \
+                response[BytePosition.Data2] == packet.data2:
+            return response
+
         return None
 
-    def _send(self, message: bytearray):
-        print(f"sending: {message}")
-        sent = self.device.write(message)
+    def write(self, message: bytearray) -> tuple:
         self.device.flush()
-        if sent != Length.Command.value:
-            raise IOError(f"SDS011: sent {sent} bytes, expected {Length.Command.value} bytes")
-        response = self._response()
-        return response
+        logging.debug(f"device.write(): {message}")
+        sent_bytes = self.device.write(message)
+        if sent_bytes != Length.Command.value:
+            raise IOError(f"SDS011: sent {sent_bytes} bytes, expected {Length.Command} bytes")
 
-    def _response(self):
-        def valid_passiv_response(_bytes: bytes) -> bool:
-            return (_bytes[0] == Byte.Head) and (_bytes[1] == Byte.PassivResponse)
+        return self.read()
 
-        def valid_initiative_response(_bytes: bytes) -> bool:
-            return (_bytes[0] == Byte.Head) and (_bytes[1] == Byte.InitiativeResponse)
+    def read(self) -> tuple:
+        self.device.flush()
+        received_bytes = self.device.read(Length.Response)
+        if received_bytes:
+            logging.debug(f"device.read(): {received_bytes}")
+            if len(received_bytes) != Length.Response:
+                raise IOError(f"SDS011: received {len(received_bytes)} bytes, expected {Length.Response} bytes")
 
-        while True:
-            received_bytes = self.device.read(Length.Response)
-            if len(received_bytes) != Length.Response.value:
-                raise IOError(f"SDS011: received {len(received_bytes)} bytes, expected {Length.Response.value} bytes")
+            return struct.unpack('BBBBBBBBBB', received_bytes)
 
-            # TODO: validate checksum of response
+    @staticmethod
+    def is_valid_passive_response(response: Union[bytearray, tuple]) -> bool:
+        if response:
+            return (response[BytePosition.Head] == Byte.Head) and \
+                   (response[BytePosition.CommandID] == Byte.PassiveResponse)
 
-            print(f"\rresponse: {struct.unpack('BBBBBBBBBB', received_bytes)}")
-
-            if not valid_passiv_response(_bytes=received_bytes[0:2]):
-                break
-            else:
-                pass
-                # logging.debug(f"[ PassivResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)=}")
-                # logging.info(f"SDS011: got response [ P ]: {received_bytes}")
-
-            if not valid_initiative_response(_bytes=received_bytes[0:2]):
-                break
-            else:
-                logging.debug(f"[ InitiativeResponse ] {received_bytes=}, {struct.unpack('BBBBBBBBBB', received_bytes)}")
-                # logging.info(f"SDS011: got response [ I ]: {received_bytes}")
-
-        return struct.unpack('BBBBBBBBBB', received_bytes)
+    @staticmethod
+    def is_valid_active_response(response: Union[bytearray, tuple]) -> bool:
+        if response:
+            return (response[BytePosition.Head] == Byte.Head) and \
+                   (response[BytePosition.CommandID] == Byte.ActiveResponse)
 
 
 class SDS011:
     def __init__(self, device_port):
+        self.communication_mode = None
+
+        self.response = None
         self.sender = None
         self._unit = "µg/m³"
         self._firmware = None
         self._device_id = None
         self._work_mode = None
-        self._communication_mode = None
 
         try:
             self.device = serial.Serial(
@@ -99,8 +94,22 @@ class SDS011:
             raise
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
-            self.sender = Sender(self.device)
-            self.get_config(print_config=True)
+            self.sender = Sender(device=self.device)
+            # self.get_config(print_config=True)
+
+    def set_communication_mode(self, communication_mode):
+        response = self.sender.communicate(set_communication_mode_packet(communication_mode=communication_mode))
+        if response:
+            self.communication_mode = response[BytePosition.Data3]
+            return self.communication_mode
+        return None
+
+    def get_communication_mode(self):
+        response = self.sender.communicate(get_communication_mode())
+        if response:
+            self.communication_mode = response[BytePosition.Data3]
+            return self.communication_mode
+        return None
 
     def get_config(self, print_config=False):
         self.wake_sensor_up()
@@ -124,56 +133,49 @@ class SDS011:
     def firmware_version(self):
         response = self.sender.communicate(get_firmware_version())
         if response:
+            print('r: ', response)
+            self.response = response
             return "{0:02d}{1:02d}{2:02d}".format(response[3], response[4], response[5])
         return None
 
     def device_id(self):
         response = self.sender.communicate(get_device_id())
         if response:
-            return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
+            self.response = response
+            # return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
         return None
 
     def work_mode(self):
         response = self.sender.communicate(get_work_mode())
         if response:
-            return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
-        return None
-
-    def communication_mode(self):
-        response = self.sender.communicate(get_communication_mode())
-        if response:
-            return response[BytePosition.Data3]
+            self.response = response
+            # return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
         return None
 
     def duty_cycle(self):
         response = self.sender.communicate(get_duty_cycle_packet())
         if response:
-            print(f"\t\tduty_cycle = {response}")
+            self.response = response
+            # print(f"\t\tduty_cycle = {response}")
         return None
 
-    def set_duty_cycle(self, period: int):
+    def set_duty_cycle_period(self, period: int = 0):
         response = self.sender.communicate(set_duty_cycle_packet(period=period))
         if response:
-            print(f"set_duty_cycle response {response}")
+            self.response = response
+            # print(f"set_duty_cycle response {response}")
         return None
-
-    def set_communication_mode(self):
-        response = self.sender.communicate(set_communication_mode_packet())
-        if response:
-            print(f"set_communication_mode response {response}")
-        return None
-
-
-# def test_communication_mode(s):
-#     s.communication_mode = CommunicationMode.Active
-#     assert s.communication_mode == CommunicationMode.Active
-#     s.communication_mode = CommunicationMode.Passive
-#     assert s.communication_mode == CommunicationMode.Passive
 
 
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
-    sensor.duty_cycle()
-    # sensor.set_communication_mode()
-    sensor.set_duty_cycle(0)
-    sensor.duty_cycle()
+    # sensor.set_duty_cycle_period(1)
+    # while True:
+    #     r = sensor.sender.read()
+    #     if sensor.sender.is_valid_active_response(r):
+    #         print(f'pomiar: {r}')
+
+    test_communication_mode(sensor)
+
+    # sensor.set_communication_mode(CommandValue.Active)
+    # print(sensor.communication_mode())

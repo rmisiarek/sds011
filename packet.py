@@ -38,6 +38,16 @@ class Packet:
         self.message = msg
 
 
+def set_communication_mode_packet(communication_mode: CommandValue):
+    return Packet(data1=Command.CommunicationMode, data2=CommandMode.Set, data3=communication_mode)
+
+
+def get_communication_mode():
+    return Packet(data1=Command.CommunicationMode, data2=CommandMode.Get)
+
+
+
+
 def get_firmware_version():
     return Packet(data1=Command.Firmware, data2=CommandMode.Get)
 
@@ -58,14 +68,6 @@ def work_mode_sleeping():
     return Packet(data1=Command.WorkMode, data2=CommandMode.Set, data3=CommandValue.Sleeping)
 
 
-def get_communication_mode():
-    return Packet(data1=Command.CommunicationMode, data2=CommandMode.Get)
-
-
-def set_communication_mode_packet():
-    return Packet(data1=Command.CommunicationMode, data2=CommandMode.Set, data3=CommandValue.Active)
-
-
 def query():
     pass
 
@@ -74,6 +76,6 @@ def get_duty_cycle_packet():
     return Packet(data1=Command.DutyCycle, data2=CommandMode.Get)
 
 
-def set_duty_cycle_packet(period: int):
-    # TODO: validate range of period, should be in 1-30
+def set_duty_cycle_packet(period: int = 0):
+    # TODO: validate range of period (if different than zero), should be in 1-30
     return Packet(data1=Command.DutyCycle, data2=CommandMode.Set, data3=period)

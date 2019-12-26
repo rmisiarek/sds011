@@ -37,8 +37,8 @@ class Byte(IntEnum):
     Tail = 0xAB,                # end of the single message
     CommandID = 0xB4,           # command id
     CommandEnd = 0xFF           # end of the command
-    InitiativeResponse = 0xC0   # automatic response
-    PassivResponse = 0xC5       # response to specific request
+    ActiveResponse = 0xC0       # active communication mode
+    PassiveResponse = 0xC5      # passive communication mode
 
 
 class Length(IntEnum):
@@ -56,13 +56,3 @@ class CommandValue(IntEnum):
     Measuring = 1               # WorkMode
     Active = 0,                 # CommunicationMode
     Passive = 1,                # CommunicationMode
-
-
-class WorkMode(IntEnum):
-    Sleeping = 0,
-    Measuring = 1
-
-
-class CommunicationMode(IntEnum):
-    Active = 0,
-    Passive = 1,
