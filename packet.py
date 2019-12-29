@@ -46,36 +46,35 @@ def get_communication_mode():
     return Packet(data1=Command.CommunicationMode, data2=CommandMode.Get)
 
 
+def query_data():
+    return Packet(data1=Command.Query, data2=CommandMode.Get)
 
 
-def get_firmware_version():
-    return Packet(data1=Command.Firmware, data2=CommandMode.Get)
+def set_device_id(byte12: int, byte13: int):
+    return Packet(data1=Command.DeviceId, data2=CommandMode.Set, data12=byte12, data13=byte13)
 
 
 def get_device_id():
     return Packet(data1=Command.DeviceId, data2=CommandMode.Get)
 
 
+def set_work_mode(work_mode: CommandValue):
+    return Packet(data1=Command.WorkMode, data2=CommandMode.Set, data3=work_mode)
+
+
 def get_work_mode():
     return Packet(data1=Command.WorkMode, data2=CommandMode.Get)
 
 
-def work_mode_measuring():
-    return Packet(data1=Command.WorkMode, data2=CommandMode.Set, data3=CommandValue.Measuring)
+def set_duty_cycle(period: int = 0):
+    if not 0 <= period <= 30:
+        raise ValueError("'period' has to be between 0 and 30 value")
+    return Packet(data1=Command.DutyCycle, data2=CommandMode.Set, data3=period)
 
 
-def work_mode_sleeping():
-    return Packet(data1=Command.WorkMode, data2=CommandMode.Set, data3=CommandValue.Sleeping)
-
-
-def query():
-    pass
-
-
-def get_duty_cycle_packet():
+def get_duty_cycle():
     return Packet(data1=Command.DutyCycle, data2=CommandMode.Get)
 
 
-def set_duty_cycle_packet(period: int = 0):
-    # TODO: validate range of period (if different than zero), should be in 1-30
-    return Packet(data1=Command.DutyCycle, data2=CommandMode.Set, data3=period)
+def get_firmware_version():
+    return Packet(data1=Command.Firmware, data2=CommandMode.Get)

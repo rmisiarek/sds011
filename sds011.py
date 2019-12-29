@@ -1,6 +1,5 @@
-import logging
+import datetime
 import struct
-from time import sleep
 from typing import Optional, Union
 
 import serial
@@ -8,11 +7,10 @@ import serial
 from packet import *
 from tests import *
 
-
 logging.basicConfig(
-    format="%(asctime)s : %(levelname)s\t%(message)s",
+    format="%(asctime)s %(levelname)s:\t%(message)s",
     datefmt="%d-%b-%y %H:%M:%S",
-    level=logging.DEBUG
+    level=logging.INFO
 )
 logging.getLogger(__name__)
 
@@ -31,9 +29,11 @@ class Sender:
 
         response = self.write(message=packet.message)
 
-        if response and response[BytePosition.Data1] == packet.data1 and \
-                response[BytePosition.Data2] == packet.data2:
-            return response
+        if response:
+            if response[BytePosition.Head] == Byte.Head:
+                return response
+            else:
+                logging.error(f"SDS011: Invalid response")
 
         return None
 
@@ -41,6 +41,7 @@ class Sender:
         self.device.flush()
         logging.debug(f"device.write(): {message}")
         sent_bytes = self.device.write(message)
+
         if sent_bytes != Length.Command.value:
             raise IOError(f"SDS011: sent {sent_bytes} bytes, expected {Length.Command} bytes")
 
@@ -49,6 +50,7 @@ class Sender:
     def read(self) -> tuple:
         self.device.flush()
         received_bytes = self.device.read(Length.Response)
+
         if received_bytes:
             logging.debug(f"device.read(): {received_bytes}")
             if len(received_bytes) != Length.Response:
@@ -72,13 +74,12 @@ class Sender:
 class SDS011:
     def __init__(self, device_port):
         self.communication_mode = None
-
-        self.response = None
+        self.work_mode = None
+        self.device_id = None
+        self.duty_cycle = None
+        self.firmware_version = None
         self.sender = None
-        self._unit = "µg/m³"
-        self._firmware = None
-        self._device_id = None
-        self._work_mode = None
+        self.unit = "µg/m³"
 
         try:
             self.device = serial.Serial(
@@ -90,14 +91,14 @@ class SDS011:
                 timeout=3
             )
         except serial.SerialException as e:
-            logging.error(e)
-            raise
+            logging.error(f"SDS011: {e}")
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
             self.sender = Sender(device=self.device)
-            # self.get_config(print_config=True)
+            self.wake_sensor_up()
+            self.get_config(print_config=True)
 
-    def set_communication_mode(self, communication_mode):
+    def set_communication_mode(self, communication_mode: CommandValue):
         response = self.sender.communicate(set_communication_mode_packet(communication_mode=communication_mode))
         if response:
             self.communication_mode = response[BytePosition.Data3]
@@ -111,71 +112,109 @@ class SDS011:
             return self.communication_mode
         return None
 
+    def query(self):
+        response = self.sender.communicate(query_data())
+        if response:
+            return self.extract_pm_values(data=response)
+        return None
+
+    def set_device_id(self, byte12: int, byte13: int):
+        response = self.sender.communicate(set_device_id(byte12=byte12, byte13=byte13))
+        if response:
+            self.device_id = f"{response[BytePosition.Data5]:02d}{response[BytePosition.Data6]:02d}"
+            return self.device_id
+        return None
+
+    def get_device_id(self):
+        response = self.sender.communicate(get_device_id())
+        if response:
+            self.device_id = f"{response[BytePosition.Data5]:02d}{response[BytePosition.Data6]:02d}"
+            return self.device_id
+        return None
+
+    def set_work_mode(self, work_mode: CommandValue):
+        response = self.sender.communicate(set_work_mode(work_mode=work_mode))
+        if response:
+            self.work_mode = response[BytePosition.Data3]
+            return self.work_mode
+        return None
+
+    def get_work_mode(self):
+        response = self.sender.communicate(get_work_mode())
+        if response:
+            self.work_mode = response[BytePosition.Data3]
+            return self.work_mode
+        return None
+
+    def set_duty_cycle(self, period: int = 0):
+        response = self.sender.communicate(set_duty_cycle(period=period))
+        if response:
+            self.duty_cycle = response[BytePosition.Data3]
+            return self.duty_cycle
+        return None
+
+    def get_duty_cycle(self):
+        response = self.sender.communicate(get_duty_cycle())
+        if response:
+            self.duty_cycle = response[BytePosition.Data3]
+            return self.duty_cycle
+        return None
+
+    def get_firmware_version(self):
+        response = self.sender.communicate(get_firmware_version())
+        if response:
+            self.firmware_version = f"{response[BytePosition.Data2]:02d}" \
+                                    f"{response[BytePosition.Data3]:02d}" \
+                                    f"{response[BytePosition.Data4]:02d}"
+            return self.firmware_version
+        return None
+
+    @staticmethod
+    def extract_pm_values(data):
+        pm25 = 0
+        pm10 = 0
+        if data:
+            pm25 = float(data[BytePosition.Data1] + data[BytePosition.Data2] * 256) / 10.0
+            pm10 = float(data[BytePosition.Data3] + data[BytePosition.Data4] * 256) / 10.0
+
+        values = {
+            "pm25": pm25,
+            "pm10": pm10,
+            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        return values
+
     def get_config(self, print_config=False):
+        logging.info("SDS011: Getting configuration from device ...")
         self.wake_sensor_up()
-        self._firmware = self.firmware_version()
-        self._device_id = self.device_id()
-        self._work_mode = self.work_mode()
-        self._communication_mode = self.communication_mode()
+        self.firmware_version = self.get_firmware_version()
+        self.device_id = self.get_device_id()
+        self.duty_cycle = self.get_duty_cycle()
+        self.work_mode = self.get_work_mode()
+        self.communication_mode = self.get_communication_mode()
 
         if print_config:
             print(f"=" * 45)
-            print(f"\tFirmware:\t\t{self._firmware}")
-            print(f"\tDevice ID:\t\t{self._device_id}")
-            print(f"\tWork mode:\t\t{self._work_mode}")
-            print(f"\tCommunication mode:\t{self._communication_mode}")
+            print(f"\tFirmware:\t\t{self.firmware_version}")
+            print(f"\tDevice ID:\t\t{self.device_id}")
+            print(f"\tDuty cycle:\t\t{self.duty_cycle}")
+            print(f"\tWork mode:\t\t{self.work_mode}")
+            print(f"\tCommunication mode:\t{self.communication_mode}")
             print(f"=" * 45)
 
     def wake_sensor_up(self):
-        self.sender.communicate(work_mode_measuring())
-        self.sender.communicate(get_duty_cycle_packet())
-
-    def firmware_version(self):
-        response = self.sender.communicate(get_firmware_version())
-        if response:
-            print('r: ', response)
-            self.response = response
-            return "{0:02d}{1:02d}{2:02d}".format(response[3], response[4], response[5])
-        return None
-
-    def device_id(self):
-        response = self.sender.communicate(get_device_id())
-        if response:
-            self.response = response
-            # return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
-        return None
-
-    def work_mode(self):
-        response = self.sender.communicate(get_work_mode())
-        if response:
-            self.response = response
-            # return "{0:02d}{1:02d}".format(response[BytePosition.Data5], response[BytePosition.Data6])
-        return None
-
-    def duty_cycle(self):
-        response = self.sender.communicate(get_duty_cycle_packet())
-        if response:
-            self.response = response
-            # print(f"\t\tduty_cycle = {response}")
-        return None
-
-    def set_duty_cycle_period(self, period: int = 0):
-        response = self.sender.communicate(set_duty_cycle_packet(period=period))
-        if response:
-            self.response = response
-            # print(f"set_duty_cycle response {response}")
-        return None
+        self.sender.communicate(set_duty_cycle())
+        self.sender.communicate(set_work_mode(CommandValue.Measuring))
 
 
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
-    # sensor.set_duty_cycle_period(1)
+    run_all_tests(sensor)
+
+    # sensor.set_duty_cycle(1)
+    # sensor.set_communication_mode(CommandValue.Active)
     # while True:
     #     r = sensor.sender.read()
     #     if sensor.sender.is_valid_active_response(r):
-    #         print(f'pomiar: {r}')
-
-    test_communication_mode(sensor)
-
-    # sensor.set_communication_mode(CommandValue.Active)
-    # print(sensor.communication_mode())
+    #         print(f"{sensor.extract_pm_values(r)}")
