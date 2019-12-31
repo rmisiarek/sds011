@@ -7,7 +7,6 @@ logging.getLogger(__name__)
 
 
 def test_communication_mode(sensor):
-    sensor.set_communication_mode(CommandValue.Passive)
     # active mode:
     sensor.set_communication_mode(CommandValue.Active)
     assert sensor.communication_mode == CommandValue.Active
@@ -41,10 +40,10 @@ def test_device_id(sensor):
 def test_work_mode(sensor):
     assert sensor.set_work_mode(CommandValue.Measuring) == CommandValue.Measuring
     assert sensor.work_mode == CommandValue.Measuring
-    sleep(2)
+    sleep(1)
     assert sensor.set_work_mode(CommandValue.Sleeping) == CommandValue.Sleeping
     assert sensor.work_mode == CommandValue.Sleeping
-    sleep(2)
+    sleep(1)
     sensor.set_work_mode(CommandValue.Measuring)
     logging.info("test_work_mode: OK")
 
@@ -53,11 +52,11 @@ def test_duty_cycle(sensor):
     assert sensor.set_duty_cycle() == 0
     assert sensor.get_duty_cycle() == 0
     assert sensor.duty_cycle == 0
-    sleep(2)
+    sleep(1)
     assert sensor.set_duty_cycle(1) == 1
     assert sensor.get_duty_cycle() == 1
     assert sensor.duty_cycle == 1
-    sleep(2)
+    sleep(1)
     assert sensor.set_duty_cycle() == 0
     logging.info("test_duty_cycle: OK")
 

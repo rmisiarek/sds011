@@ -6,12 +6,9 @@ import serial
 
 from packet import *
 from tests import *
+from utils import *
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s:\t%(message)s",
-    datefmt="%d-%b-%y %H:%M:%S",
-    level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s %(levelname)s:\t%(message)s", datefmt="%d-%b-%y %H:%M:%S", level=logging.INFO)
 logging.getLogger(__name__)
 
 
@@ -96,10 +93,11 @@ class SDS011:
             logging.info(f"SDS011: device on {device_port} - OK")
             self.sender = Sender(device=self.device)
             self.wake_sensor_up()
+            sleep(1)
             self.get_config(print_config=True)
 
     def set_communication_mode(self, communication_mode: CommandValue):
-        response = self.sender.communicate(set_communication_mode_packet(communication_mode=communication_mode))
+        response = self.sender.communicate(set_communication_mode(communication_mode=communication_mode))
         if response:
             self.communication_mode = response[BytePosition.Data3]
             return self.communication_mode
@@ -112,12 +110,14 @@ class SDS011:
             return self.communication_mode
         return None
 
+    @passive_mode
     def query(self):
         response = self.sender.communicate(query_data())
         if response:
             return self.extract_pm_values(data=response)
         return None
 
+    @passive_mode
     def set_device_id(self, byte12: int, byte13: int):
         response = self.sender.communicate(set_device_id(byte12=byte12, byte13=byte13))
         if response:
@@ -125,6 +125,7 @@ class SDS011:
             return self.device_id
         return None
 
+    @passive_mode
     def get_device_id(self):
         response = self.sender.communicate(get_device_id())
         if response:
@@ -132,6 +133,7 @@ class SDS011:
             return self.device_id
         return None
 
+    @passive_mode
     def set_work_mode(self, work_mode: CommandValue):
         response = self.sender.communicate(set_work_mode(work_mode=work_mode))
         if response:
@@ -139,6 +141,7 @@ class SDS011:
             return self.work_mode
         return None
 
+    @passive_mode
     def get_work_mode(self):
         response = self.sender.communicate(get_work_mode())
         if response:
@@ -146,6 +149,7 @@ class SDS011:
             return self.work_mode
         return None
 
+    @active_mode
     def set_duty_cycle(self, period: int = 0):
         response = self.sender.communicate(set_duty_cycle(period=period))
         if response:
@@ -153,6 +157,7 @@ class SDS011:
             return self.duty_cycle
         return None
 
+    @passive_mode
     def get_duty_cycle(self):
         response = self.sender.communicate(get_duty_cycle())
         if response:
@@ -160,6 +165,7 @@ class SDS011:
             return self.duty_cycle
         return None
 
+    @passive_mode
     def get_firmware_version(self):
         response = self.sender.communicate(get_firmware_version())
         if response:
@@ -187,7 +193,6 @@ class SDS011:
 
     def get_config(self, print_config=False):
         logging.info("SDS011: Getting configuration from device ...")
-        self.wake_sensor_up()
         self.firmware_version = self.get_firmware_version()
         self.device_id = self.get_device_id()
         self.duty_cycle = self.get_duty_cycle()
@@ -206,15 +211,16 @@ class SDS011:
     def wake_sensor_up(self):
         self.sender.communicate(set_duty_cycle())
         self.sender.communicate(set_work_mode(CommandValue.Measuring))
+        self.sender.communicate(set_communication_mode(CommandValue.Passive))
 
 
 if __name__ == "__main__":
     sensor = SDS011("/dev/ttyUSB0")
-    run_all_tests(sensor)
 
-    # sensor.set_duty_cycle(1)
-    # sensor.set_communication_mode(CommandValue.Active)
-    # while True:
-    #     r = sensor.sender.read()
-    #     if sensor.sender.is_valid_active_response(r):
-    #         print(f"{sensor.extract_pm_values(r)}")
+    # run_all_tests(sensor)
+
+    sensor.set_duty_cycle(1)
+    while True:
+        r = sensor.sender.read()
+        if sensor.sender.is_valid_active_response(r):
+            print(f"{sensor.extract_pm_values(r)}")

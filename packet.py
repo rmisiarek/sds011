@@ -38,7 +38,7 @@ class Packet:
         self.message = msg
 
 
-def set_communication_mode_packet(communication_mode: CommandValue):
+def set_communication_mode(communication_mode: CommandValue):
     return Packet(data1=Command.CommunicationMode, data2=CommandMode.Set, data3=communication_mode)
 
 
