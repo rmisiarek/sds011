@@ -1,5 +1,6 @@
 import datetime
 import struct
+from sys import exit
 from typing import Optional, Union
 
 import serial
@@ -221,6 +222,9 @@ if __name__ == "__main__":
 
     sensor.set_duty_cycle(1)
     while True:
-        r = sensor.sender.read()
-        if sensor.sender.is_valid_active_response(r):
-            print(f"{sensor.extract_pm_values(r)}")
+        try:
+            r = sensor.sender.read()
+            if sensor.sender.is_valid_active_response(r):
+                print(f"{sensor.extract_pm_values(r)}")
+        except KeyboardInterrupt:
+            exit("\nBye!")
