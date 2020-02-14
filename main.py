@@ -2,8 +2,8 @@ import logging
 from sys import exit
 
 import db
-from sds011 import SDS011
-from tests import run_all_tests
+from .sds011 import SDS011
+from .tests import run_all_tests
 
 logging.getLogger(__name__)
 

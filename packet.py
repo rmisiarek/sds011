@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from command import *
+from .command import *
 
 
 @dataclass

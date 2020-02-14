@@ -1,5 +1,5 @@
 from functools import wraps
-from command import *
+from .command import *
 
 
 def active_mode(func):

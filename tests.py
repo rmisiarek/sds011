@@ -1,7 +1,7 @@
 import logging
 from time import sleep
 
-from command import *
+from .command import *
 
 logging.getLogger(__name__)
 

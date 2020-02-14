@@ -5,9 +5,9 @@ from typing import Optional, Union
 
 import serial
 
-from packet import *
-from tests import *
-from utils import *
+from .packet import *
+from .tests import *
+from .utils import *
 
 logging.basicConfig(format="%(asctime)s %(levelname)s:\t%(message)s", datefmt="%d-%b-%y %H:%M:%S", level=logging.INFO)
 logging.getLogger(__name__)
