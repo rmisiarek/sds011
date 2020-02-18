@@ -90,6 +90,7 @@ class SDS011:
             )
         except serial.SerialException as e:
             logging.error(f"SDS011: {e}")
+            raise
         else:
             logging.info(f"SDS011: device on {device_port} - OK")
             self.sender = Sender(device=self.device)
